@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_BASE = 'http://127.0.0.1:8000/api'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api'
 
 const api = axios.create({ baseURL: API_BASE })
 
@@ -46,13 +46,10 @@ export const logoutUser = () => {
 
 export const registerUser = async (data) => {
   const res = await axios.post(`${API_BASE}/register/`, data)
-  return res.data
-}
-
-export const verifyOTP = async (email, otp) => {
-  const res = await axios.post(`${API_BASE}/verify-otp/`, { email, otp })
-  localStorage.setItem('access_token', res.data.access)
-  localStorage.setItem('refresh_token', res.data.refresh)
+  if (res.data.access) {
+    localStorage.setItem('access_token', res.data.access)
+    localStorage.setItem('refresh_token', res.data.refresh)
+  }
   return res.data
 }
 
