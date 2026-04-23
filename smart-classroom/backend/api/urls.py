@@ -15,5 +15,7 @@ urlpatterns = [
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('user/', views.current_user),
+    path('history/<str:room_name>/<int:year>/<int:month>/<int:day>/', views.room_history),
     path('calendar/<str:room_name>/<int:year>/<int:month>/<int:day>/', views.calendar_events),
+    path('esp32/<str:room_name>/status/', views.esp32_status),
 ]
