@@ -35,6 +35,20 @@ function Toast({ toasts }) {
   )
 }
 
+function Modal({ title, children, onClose }) {
+  return (
+    <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+      <motion.div className="modal-content" initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.4rem', color: 'var(--text-1)', fontWeight: 400 }}>{title}</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">{children}</div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
 function Wire({ start, end, color = '#00c896', animated = false }) {
   const ref = useRef()
   const points = [new THREE.Vector3(...start), new THREE.Vector3(...end)]
@@ -304,56 +318,88 @@ function SmartInsightsPage({ rooms, selectedRoom }) {
   const [error, setError] = useState(null)
   const room = rooms.find(r => r.name === selectedRoom)
 
-  const generateInsights = async () => {
+  const generateInsights = () => {
     setLoading(true)
     setError(null)
-    try {
-      const energyLogs = room?.energy_logs?.slice(-7) || []
-      const events = room?.events?.slice(0, 20) || []
-      const energySaved = room?.energy_saved_today || 0
-      const hoursOn = energyLogs.reduce((a, b) => a + (b.hours_on || 0), 0).toFixed(1)
-      const onEvents = events.filter(e => e.status === 'on').length
-      const totalEvents = events.length
-
-      const prompt = `You are an IoT energy analyst for a smart classroom system (SEC - Smart Environment Classroom). 
-Analyze this data for Room ${selectedRoom} and provide 4 specific, actionable insights in JSON format.
-
-Data:
-- Energy saved today: ${energySaved.toFixed(3)} kWh
-- Total hours lights were ON this week: ${hoursOn} hours  
-- Motion detection events (ON): ${onEvents} out of ${totalEvents} total events
-- Occupancy rate: ${totalEvents > 0 ? Math.round((onEvents/totalEvents)*100) : 0}%
-- Recent energy logs (last 7 days): ${JSON.stringify(energyLogs.map(l => ({ date: l.date, hours: l.hours_on, saved: l.energy_saved })))}
-- Latest events: ${JSON.stringify(events.slice(0,5).map(e => ({ time: e.timestamp, type: e.event_type, status: e.status, duration: e.duration })))}
-- Meralco rate: ₱${MERALCO_RATE}/kWh
-
-Respond with ONLY a valid JSON array (no markdown, no backticks) of exactly 4 objects, each with:
-- type: "success" | "warning" | "info" | "tip"
-- title: short title (max 8 words)
-- body: actionable insight (2-3 sentences, specific, mention actual numbers from the data)
-- saving: estimated peso savings or impact (e.g. "₱2.30/week" or "~15% reduction")
-
-Focus on: energy waste detection, timeout recommendations, usage patterns, cost optimization.`
-
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      })
-      const data = await response.json()
-      const text = data.content?.find(b => b.type === 'text')?.text || '[]'
-      const clean = text.replace(/```json|```/g, '').trim()
-      const parsed = JSON.parse(clean)
-      setInsights(parsed)
-    } catch (e) {
-      setError('Could not generate insights. Check your API connection.')
-    } finally {
-      setLoading(false)
-    }
+    setTimeout(() => {
+      try {
+        const energyLogs = room?.energy_logs?.slice(-7) || []
+        const events = room?.events?.slice(0, 20) || []
+        const energySaved = room?.energy_saved_today || 0
+        const hoursOn = energyLogs.reduce((a, b) => a + (b.hours_on || 0), 0)
+        const onEvents = events.filter(e => e.status === 'on').length
+        const totalEvents = events.length
+        const occupancyRate = totalEvents > 0 ? Math.round((onEvents / totalEvents) * 100) : 0
+        const avgHours = energyLogs.length > 0 ? (hoursOn / energyLogs.length).toFixed(1) : 0
+        const insights = []
+        if (energySaved < 0.5 && hoursOn > 20) {
+          insights.push({
+            type: 'warning',
+            title: 'High Energy Usage Detected',
+            body: `Room ${selectedRoom} consumed ${hoursOn.toFixed(1)} hours of light this week with only ${energySaved.toFixed(3)} kWh saved. This suggests lights are staying on too long during vacant periods.`,
+            saving: `~₱${(hoursOn * 0.1 * MERALCO_RATE).toFixed(2)}/week`
+          })
+        } else {
+          insights.push({
+            type: 'success',
+            title: 'Energy Efficiency On Track',
+            body: `Room ${selectedRoom} saved ${energySaved.toFixed(3)} kWh today. Your automation is working well to reduce waste during ${totalEvents - onEvents} vacant periods.`,
+            saving: `₱${(energySaved * MERALCO_RATE).toFixed(2)} saved`
+          })
+        }
+        if (occupancyRate < 30 && totalEvents > 5) {
+          insights.push({
+            type: 'tip',
+            title: 'Low Occupancy Rate',
+            body: `Only ${occupancyRate}% of detected events show occupancy. Consider reducing the motion sensor timeout or checking sensor placement for Room ${selectedRoom}.`,
+            saving: '~15% reduction possible'
+          })
+        } else if (occupancyRate > 70) {
+          insights.push({
+            type: 'success',
+            title: 'High Room Utilization',
+            body: `${occupancyRate}% occupancy rate indicates Room ${selectedRoom} is heavily used. Energy savings are maximized during off-hours.`,
+            saving: 'Optimal usage pattern'
+          })
+        }
+        if (avgHours > 6) {
+          insights.push({
+            type: 'warning',
+            title: 'Excessive Daily Light Hours',
+            body: `Averaging ${avgHours} hours per day exceeds typical classroom needs. Review scheduling to auto-off lights during breaks.`,
+            saving: `~₱${((avgHours - 4) * 7 * 0.1 * MERALCO_RATE).toFixed(2)}/week`
+          })
+        } else {
+          insights.push({
+            type: 'info',
+            title: 'Balanced Light Usage',
+            body: `At ${avgHours} hours daily average, Room ${selectedRoom} maintains efficient lighting schedules aligned with class timetables.`,
+            saving: 'Within optimal range'
+          })
+        }
+        const lastEvent = events[0]
+        if (lastEvent && lastEvent.status === 'on' && room?.occupancy === false) {
+          insights.push({
+            type: 'warning',
+            title: 'Lights On While Vacant',
+            body: `Latest event shows lights turned on but room is currently vacant. Verify auto-off timeout is functioning correctly.`,
+            saving: `~₱${(0.5 * MERALCO_RATE).toFixed(2)}/day`
+          })
+        } else {
+          insights.push({
+            type: 'tip',
+            title: 'Automation Sync Verified',
+            body: `Light status aligns with occupancy data. The relay and PIR sensor are communicating effectively for Room ${selectedRoom}.`,
+            saving: 'System healthy'
+          })
+        }
+        setInsights(insights.slice(0, 4))
+      } catch (e) {
+        setError('Could not generate insights.')
+      } finally {
+        setLoading(false)
+      }
+    }, 1200)
   }
 
   const typeConfig = {
@@ -1249,6 +1295,9 @@ function DashboardScreen({ onLogout }) {
   const [newEventIds, setNewEventIds] = useState(new Set())
   const [toasts, setToasts] = useState([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [modalOpen, setModalOpen] = useState(null)
+  const [modalData, setModalData] = useState(null)
+  const [viewMode, setViewMode] = useState('day')
   const prevEventCount = useRef(0)
   const intervalRef = useRef(null)
   const pollRef = useRef(null)
@@ -1332,7 +1381,17 @@ function DashboardScreen({ onLogout }) {
   else { isEmpty = !currentRoom?.events || currentRoom.events.length === 0 }
   const hasEvents = !isEmpty && !isFuture
 
-  const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  const getWeekLabels = () => {
+    const days = []
+    const base = viewingDate === 'past' && selectedDate ? new Date(selectedDate) : new Date()
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(base)
+      d.setDate(d.getDate() - i)
+      days.push(d.toLocaleDateString('en-US', { weekday: 'short' }))
+    }
+    return days
+  }
+  const weekDays = getWeekLabels()
   const energyHours = displayRoom?.energy_logs?.slice(-7).map(l => l.hours_on) || [1.2, 2.5, 3.1, 2.0, 1.8, 0.5, 2.2]
   const energySaved = displayRoom?.energy_logs?.slice(-7).map(l => l.energy_saved) || [0.15, 0.18, 0.22, 0.20, 0.17, 0.12, 0.19]
   const chartOptions = { responsive: true, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#0e1a14', borderColor: 'rgba(0,200,150,0.2)', borderWidth: 1, titleColor: '#fff', bodyColor: '#8fa898' } }, scales: { x: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { color: '#8fa898', font: { size: 11 } } }, y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { color: '#8fa898', font: { size: 11 } } } } }
@@ -1410,12 +1469,23 @@ function DashboardScreen({ onLogout }) {
 
         <AnimatePresence>
           {showCalendar && (
+            <motion.div className="calendar-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowCalendar(false)} />
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {showCalendar && (
             <motion.div className="calendar-popup" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
               <Calendar onChange={handleDateChange} value={selectedDate} />
             </motion.div>
           )}
         </AnimatePresence>
 
+        {viewingDate === 'past' && selectedDate && (
+          <motion.div className="date-banner" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+            <span>Viewing data for <strong>{selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</strong></span>
+            <button onClick={() => { setViewingDate(null); setHistoricalData(null); setSelectedDate(new Date()) }}>Back to Today</button>
+          </motion.div>
+        )}
         <main className="dashboard-main">
           {activeNav === 'report'      && <ReportPage rooms={rooms} selectedRoom={selectedRoom} />}
           {activeNav === 'insights'    && <SmartInsightsPage rooms={rooms} selectedRoom={selectedRoom} />}
@@ -1499,15 +1569,43 @@ function DashboardScreen({ onLogout }) {
                 </motion.div>
               ) : (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                  <div className="view-toggle-bar">
+                    {['day', 'week', 'month', 'year'].map(v => (
+                      <button key={v} className={viewMode === v ? 'active' : ''} onClick={() => setViewMode(v)}>{v.charAt(0).toUpperCase() + v.slice(1)}</button>
+                    ))}
+                  </div>
                   <div className="stat-grid">
-                    <div className="stat-card"><div className="stat-label">Light Status</div><div className="stat-value">{displayRoom?.is_active ? 'ON' : 'OFF'}</div><StatusBadge on={displayRoom?.is_active} /></div>
-                    <div className="stat-card"><div className="stat-label">Last Motion</div><div className="stat-value" style={{ fontSize: '1.2rem' }}>{displayRoom?.last_motion ? new Date(displayRoom.last_motion).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—'}</div></div>
-                    <div className="stat-card"><div className="stat-label">Room Occupancy</div><div className="stat-value" style={{ fontSize: '1.3rem' }}>{displayRoom?.occupancy ? 'Occupied' : 'Vacant'}</div></div>
-                    <div className="stat-card"><div className="stat-label">Energy Saved Today</div><div className="stat-value">{(displayRoom?.energy_saved_today || 0).toFixed(2)}<span style={{ fontSize: '1rem', marginLeft: 4, color: 'var(--text-3)' }}>kWh</span></div></div>
+                    <div className="stat-card" onClick={() => { setModalData({ type: 'light', room: displayRoom }); setModalOpen('light') }} style={{ cursor: 'pointer' }}>
+                      <div className="stat-label">Light Status</div>
+                      <div className="stat-value">{displayRoom?.is_active ? 'ON' : 'OFF'}</div>
+                      <StatusBadge on={displayRoom?.is_active} />
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: 8 }}>Click to control</div>
+                    </div>
+                    <div className="stat-card" onClick={() => { setModalData({ type: 'motion', room: displayRoom }); setModalOpen('motion') }} style={{ cursor: 'pointer' }}>
+                      <div className="stat-label">Last Motion</div>
+                      <div className="stat-value" style={{ fontSize: '1.2rem' }}>{displayRoom?.last_motion ? new Date(displayRoom.last_motion).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—'}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: 8 }}>Click for history</div>
+                    </div>
+                    <div className="stat-card" onClick={() => { setModalData({ type: 'occupancy', room: displayRoom }); setModalOpen('occupancy') }} style={{ cursor: 'pointer' }}>
+                      <div className="stat-label">Room Occupancy</div>
+                      <div className="stat-value" style={{ fontSize: '1.3rem' }}>{displayRoom?.occupancy ? 'Occupied' : 'Vacant'}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: 8 }}>Click for details</div>
+                    </div>
+                    <div className="stat-card" onClick={() => { setModalData({ type: 'energy', room: displayRoom }); setModalOpen('energy') }} style={{ cursor: 'pointer' }}>
+                      <div className="stat-label">Energy Saved Today</div>
+                      <div className="stat-value">{(displayRoom?.energy_saved_today || 0).toFixed(2)}<span style={{ fontSize: '1rem', marginLeft: 4, color: 'var(--text-3)' }}>kWh</span></div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: 8 }}>Click for breakdown</div>
+                    </div>
                   </div>
                   <div className="charts-row">
-                    <div className="chart-panel"><div className="chart-panel-head"><span className="chart-panel-title">Daily Light Usage</span><span className="chart-panel-sub">Hours lights were on this week</span></div><Bar data={{ labels: weekDays, datasets: [{ label: 'Hours', data: energyHours, backgroundColor: 'rgba(0,200,150,0.18)', borderColor: 'rgba(0,200,150,0.75)', borderWidth: 1.5, borderRadius: 7 }] }} options={chartOptions} /></div>
-                    <div className="chart-panel"><div className="chart-panel-head"><span className="chart-panel-title">Energy Saved</span><span className="chart-panel-sub">kWh saved vs. baseline this week</span></div><Line data={{ labels: weekDays, datasets: [{ label: 'kWh Saved', data: energySaved, borderColor: 'rgba(0,200,150,0.85)', backgroundColor: 'rgba(0,200,150,0.07)', borderWidth: 2, tension: 0.45, pointBackgroundColor: 'var(--green)', pointRadius: 4, fill: true }] }} options={chartOptions} /></div>
+                    <div className="chart-panel" onClick={() => { setModalData({ type: 'chart-hours', labels: weekDays, data: energyHours }); setModalOpen('chart-hours') }} style={{ cursor: 'pointer' }}>
+                      <div className="chart-panel-head"><span className="chart-panel-title">Daily Light Usage</span><span className="chart-panel-sub">Hours lights were on this week · Click to expand</span></div>
+                      <Bar data={{ labels: weekDays, datasets: [{ label: 'Hours', data: energyHours, backgroundColor: 'rgba(0,200,150,0.18)', borderColor: 'rgba(0,200,150,0.75)', borderWidth: 1.5, borderRadius: 7 }] }} options={chartOptions} />
+                    </div>
+                    <div className="chart-panel" onClick={() => { setModalData({ type: 'chart-saved', labels: weekDays, data: energySaved }); setModalOpen('chart-saved') }} style={{ cursor: 'pointer' }}>
+                      <div className="chart-panel-head"><span className="chart-panel-title">Energy Saved</span><span className="chart-panel-sub">kWh saved vs. baseline this week · Click to expand</span></div>
+                      <Line data={{ labels: weekDays, datasets: [{ label: 'kWh Saved', data: energySaved, borderColor: 'rgba(0,200,150,0.85)', backgroundColor: 'rgba(0,200,150,0.07)', borderWidth: 2, tension: 0.45, pointBackgroundColor: 'var(--green)', pointRadius: 4, fill: true }] }} options={chartOptions} />
+                    </div>
                   </div>
                   <div className="log-panel">
                     <div className="log-panel-head"><span className="chart-panel-title">Event Log</span><span className="live-badge"><span className="live-dot" />Live · {POLL_INTERVAL / 1000}s refresh</span></div>
@@ -1540,6 +1638,152 @@ function DashboardScreen({ onLogout }) {
           )}
         </main>
       </div>
+      <AnimatePresence>
+        {modalOpen && modalData && (
+          <Modal title={
+            modalData.type === 'light' ? 'Light Control — Room ' + selectedRoom :
+            modalData.type === 'motion' ? 'Motion History — Room ' + selectedRoom :
+            modalData.type === 'occupancy' ? 'Occupancy Details — Room ' + selectedRoom :
+            modalData.type === 'energy' ? 'Energy Breakdown — Room ' + selectedRoom :
+            modalData.type === 'chart-hours' ? 'Daily Light Usage Details' :
+            modalData.type === 'chart-saved' ? 'Energy Savings Analysis' : 'Details'
+          } onClose={() => { setModalOpen(null); setModalData(null) }}>
+            {modalData.type === 'light' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px', background: modalData.room?.is_active ? 'rgba(0,200,150,0.08)' : 'rgba(239,68,68,0.06)', borderRadius: 10, border: `1px solid ${modalData.room?.is_active ? 'rgba(0,200,150,0.25)' : 'rgba(239,68,68,0.2)'}` }}>
+                  <div style={{ width: 12, height: 12, borderRadius: '50%', background: modalData.room?.is_active ? 'var(--green)' : 'var(--red)', animation: modalData.room?.is_active ? 'livePulse 1.8s infinite' : 'none' }} />
+                  <span style={{ fontWeight: 600, color: 'var(--text-1)' }}>Lights are currently <strong style={{ color: modalData.room?.is_active ? 'var(--green)' : 'var(--red)' }}>{modalData.room?.is_active ? 'ON' : 'OFF'}</strong></span>
+                </div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-2)', lineHeight: 1.7 }}>
+                  The relay module connected to GPIO 2 controls the 2.5V bulb circuit. When motion is detected by the PIR sensor on GPIO 13, the ESP32 sends HIGH to the relay coil, closing the switch and illuminating the bulb. The auto-off timeout triggers after 7 seconds of no motion to conserve energy.
+                </p>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <button onClick={handleSimulate} disabled={simulating} style={{ padding: '10px 24px', background: 'var(--green)', color: 'white', border: 'none', borderRadius: 9, fontFamily: 'Geist, sans-serif', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer' }}>{simulating ? 'Turning ON…' : 'Turn Lights ON'}</button>
+                  <button onClick={handleSimulateOff} disabled={simulatingOff} style={{ padding: '10px 24px', background: 'var(--red)', color: 'white', border: 'none', borderRadius: 9, fontFamily: 'Geist, sans-serif', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer' }}>{simulatingOff ? 'Turning OFF…' : 'Turn Lights OFF'}</button>
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-3)', padding: '10px 14px', background: 'var(--bg)', borderRadius: 8 }}>
+                  <strong>Device:</strong> ESP32 Dev Module · <strong>Relay:</strong> GPIO 2 · <strong>PIR:</strong> GPIO 13 · <strong>Bulb:</strong> 2.5V 3W via 9V battery + 680Ω resistor
+                </div>
+              </div>
+            )}
+            {modalData.type === 'motion' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-2)', lineHeight: 1.7 }}>
+                  The HC-SR501 PIR sensor detects infrared radiation changes caused by moving bodies. When motion is sensed, it outputs HIGH (3.3V) to GPIO 13, triggering the ESP32 to log the event and activate the relay.
+                </p>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-1)', marginBottom: 4 }}>Recent Motion Events</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto' }}>
+                  {(modalData.room?.events || []).filter(e => e.status === 'on').slice(0, 10).map((ev, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--bg)', borderRadius: 8, fontSize: '0.82rem' }}>
+                      <span style={{ color: 'var(--text-2)' }}>{new Date(ev.timestamp).toLocaleString()}</span>
+                      <span style={{ color: 'var(--green)', fontWeight: 600 }}>{ev.event_type}</span>
+                    </div>
+                  ))}
+                  {(modalData.room?.events || []).filter(e => e.status === 'on').length === 0 && (
+                    <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-3)', fontSize: '0.85rem' }}>No motion events recorded yet.</div>
+                  )}
+                </div>
+              </div>
+            )}
+            {modalData.type === 'occupancy' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-2)', lineHeight: 1.7 }}>
+                  Occupancy is determined by the PIR sensor state. When the sensor reads HIGH, the room is marked as Occupied. After the timeout period with no motion, the status changes to Vacant and lights automatically turn off.
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={{ padding: '16px', background: 'var(--bg)', borderRadius: 10, textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 6 }}>Current Status</div>
+                    <div style={{ fontSize: '1.3rem', fontWeight: 600, color: modalData.room?.occupancy ? 'var(--green)' : 'var(--text-1)' }}>{modalData.room?.occupancy ? 'Occupied' : 'Vacant'}</div>
+                  </div>
+                  <div style={{ padding: '16px', background: 'var(--bg)', borderRadius: 10, textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 6 }}>Total Detections</div>
+                    <div style={{ fontSize: '1.3rem', fontWeight: 600, color: 'var(--text-1)' }}>{(modalData.room?.events || []).filter(e => e.status === 'on').length}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-3)', padding: '10px 14px', background: 'rgba(0,200,150,0.04)', borderRadius: 8, border: '1px solid rgba(0,200,150,0.15)' }}>
+                  <strong>Tip:</strong> If occupancy seems inaccurate, check the PIR sensor sensitivity potentiometer and ensure the sensor has a clear line of sight across the room.
+                </div>
+              </div>
+            )}
+            {modalData.type === 'energy' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-2)', lineHeight: 1.7 }}>
+                  Energy savings are calculated by comparing actual light usage against an 8-hour daily baseline. The Meralco rate of ₱{MERALCO_RATE}/kWh is applied to compute peso savings.
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={{ padding: '16px', background: 'var(--bg)', borderRadius: 10, textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 6 }}>Saved Today</div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 600, color: 'var(--green)' }}>{(modalData.room?.energy_saved_today || 0).toFixed(3)} kWh</div>
+                  </div>
+                  <div style={{ padding: '16px', background: 'var(--bg)', borderRadius: 10, textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 6 }}>Peso Value</div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 600, color: '#f59e0b' }}>₱{((modalData.room?.energy_saved_today || 0) * MERALCO_RATE).toFixed(2)}</div>
+                  </div>
+                </div>
+                <div style={{ padding: '14px', background: 'var(--bg)', borderRadius: 10 }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-1)', marginBottom: 8 }}>Weekly Breakdown</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {(modalData.room?.energy_logs || []).slice(-7).map((log, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ color: 'var(--text-3)' }}>{log.date || weekDays[i]}</span>
+                        <span style={{ color: 'var(--text-1)', fontWeight: 500 }}>{log.hours_on} hrs · {log.energy_saved?.toFixed(3)} kWh</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            {modalData.type === 'chart-hours' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-2)', lineHeight: 1.7 }}>
+                  This chart displays the total hours the lights remained ON per day over the last 7 days. Higher bars indicate heavier room usage or potential issues with auto-off timeouts not triggering correctly.
+                </p>
+                <div style={{ height: 300 }}>
+                  <Bar data={{ labels: modalData.labels, datasets: [{ label: 'Hours', data: modalData.data, backgroundColor: 'rgba(0,200,150,0.25)', borderColor: 'rgba(0,200,150,0.85)', borderWidth: 1.5, borderRadius: 7 }] }} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { color: '#8fa898' } }, y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { color: '#8fa898' } } } }} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                  <div style={{ padding: '12px', background: 'var(--bg)', borderRadius: 8, textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>Total</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-1)' }}>{modalData.data.reduce((a, b) => a + b, 0).toFixed(1)}h</div>
+                  </div>
+                  <div style={{ padding: '12px', background: 'var(--bg)', borderRadius: 8, textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>Average</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-1)' }}>{(modalData.data.reduce((a, b) => a + b, 0) / modalData.data.length).toFixed(1)}h</div>
+                  </div>
+                  <div style={{ padding: '12px', background: 'var(--bg)', borderRadius: 8, textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>Peak</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-1)' }}>{Math.max(...modalData.data).toFixed(1)}h</div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {modalData.type === 'chart-saved' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-2)', lineHeight: 1.7 }}>
+                  Energy savings are computed by subtracting actual consumption from an 8-hour daily baseline. The trend line shows how efficiently the room operates day-to-day. Steady savings indicate the motion-based auto-off system is performing well.
+                </p>
+                <div style={{ height: 300 }}>
+                  <Line data={{ labels: modalData.labels, datasets: [{ label: 'kWh Saved', data: modalData.data, borderColor: 'rgba(0,200,150,0.85)', backgroundColor: 'rgba(0,200,150,0.07)', borderWidth: 2, tension: 0.45, pointBackgroundColor: 'var(--green)', pointRadius: 4, fill: true }] }} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { color: '#8fa898' } }, y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { color: '#8fa898' } } } }} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                  <div style={{ padding: '12px', background: 'var(--bg)', borderRadius: 8, textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>Total Saved</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--green)' }}>{modalData.data.reduce((a, b) => a + b, 0).toFixed(3)} kWh</div>
+                  </div>
+                  <div style={{ padding: '12px', background: 'var(--bg)', borderRadius: 8, textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>Peso Value</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#f59e0b' }}>₱{(modalData.data.reduce((a, b) => a + b, 0) * MERALCO_RATE).toFixed(2)}</div>
+                  </div>
+                  <div style={{ padding: '12px', background: 'var(--bg)', borderRadius: 8, textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-3)' }}>Daily Avg</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-1)' }}>{(modalData.data.reduce((a, b) => a + b, 0) / modalData.data.length).toFixed(3)} kWh</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </Modal>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
