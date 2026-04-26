@@ -27,7 +27,6 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    # 👇 move this BELOW CommonMiddleware (important for CORS preflight)
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -93,13 +92,20 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ✅ FIXED CORS CONFIG
 CORS_ALLOWED_ORIGINS = [
+    # Local development
     "http://localhost:5174",
     "http://127.0.0.1:5174",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    # ✅ Vercel frontend
+    "https://smart-environment-c-lass-room.vercel.app",
 ]
+
+# ✅ Allow ESP32 and all hardware devices
+CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOW_CREDENTIALS = True
 
-# (optional but helpful during dev)
 CORS_ALLOW_HEADERS = [
     "accept",
     "authorization",
@@ -107,6 +113,15 @@ CORS_ALLOW_HEADERS = [
     "user-agent",
     "x-csrftoken",
     "x-requested-with",
+]
+
+CORS_ALLOW_METHODS = [
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
 ]
 
 REST_FRAMEWORK = {
