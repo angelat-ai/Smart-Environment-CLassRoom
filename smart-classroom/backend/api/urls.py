@@ -18,4 +18,7 @@ urlpatterns = [
     path('history/<str:room_name>/<int:year>/<int:month>/<int:day>/', views.room_history),
     path('calendar/<str:room_name>/<int:year>/<int:month>/<int:day>/', views.calendar_events),
     path('esp32/<str:room_name>/status/', views.esp32_status),
+    path('automation/', views.automation_rules),
+    path('automation/<int:rule_id>/', views.automation_rule_detail),
+    path('dashboard/summary/', views.dashboard_summary),
 ]

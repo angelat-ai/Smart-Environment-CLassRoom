@@ -58,6 +58,15 @@ export const fetchRooms = async () => {
   return res.data
 }
 
+export const createRoom = async (name, description = '') => {
+  const res = await api.post('/rooms/', { name, description })
+  return res.data
+}
+
+export const deleteRoom = async (id) => {
+  await api.delete(`/rooms/${id}/`)
+}
+
 export const simulateMotion = async (room) => {
   const res = await api.post('/simulate/', { room, event: 'Lights ON', source: 'simulator' })
   return res.data
@@ -75,6 +84,30 @@ export const fetchRoomHistory = async (room, year, month, day) => {
 
 export const fetchCurrentUser = async () => {
   const res = await api.get('/user/')
+  return res.data
+}
+
+export const fetchAutomationRules = async (room) => {
+  const res = await api.get('/automation/', { params: room ? { room } : {} })
+  return res.data
+}
+
+export const createAutomationRule = async (data) => {
+  const res = await api.post('/automation/', data)
+  return res.data
+}
+
+export const updateAutomationRule = async (id, data) => {
+  const res = await api.patch(`/automation/${id}/`, data)
+  return res.data
+}
+
+export const deleteAutomationRule = async (id) => {
+  await api.delete(`/automation/${id}/`)
+}
+
+export const fetchDashboardSummary = async () => {
+  const res = await api.get('/dashboard/summary/')
   return res.data
 }
 

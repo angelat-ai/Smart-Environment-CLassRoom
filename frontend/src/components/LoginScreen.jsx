@@ -83,7 +83,7 @@ function LoginScreen({ onLogin }) {
         <div className="auth-left">
           <span className="auth-sec">SEC</span>
           <span className="auth-name">Smart Environment Classroom</span>
-          <p className="auth-desc">Intelligent lighting, real-time occupancy, and energy insightsS all in one place.</p>
+          <p className="auth-desc">Intelligent lighting, real-time occupancy, and energy insights all in one place.</p>
           <div style={{ marginTop: '40px' }}><DraggableBulb isOn={bulbOn} setIsOn={setBulbOn} /></div>
         </div>
         <div className="auth-right">
