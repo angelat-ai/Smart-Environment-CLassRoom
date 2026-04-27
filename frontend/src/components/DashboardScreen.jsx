@@ -17,7 +17,7 @@ import Classroom3DPage from './Classroom3DPage'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, Filler, ArcElement)
 
-const POLL_INTERVAL = 5000
+const POLL_INTERVAL = 2000
 const ZAMCELCO_RATE = 13.25
 const WMSU_LOGO = 'https://upload.wikimedia.org/wikipedia/en/thumb/6/6b/WMSU_logo.png/200px-WMSU_logo.png'
 
@@ -395,9 +395,6 @@ function RoomsPage({ rooms, setRooms, setSelectedRoom, setActiveNav, addToast, d
                 {saving ? 'Saving…' : 'Add Room'}
               </button>
             </div>
-            <div style={{ marginTop: 10, fontSize: '0.77rem', color: 'var(--text-3)', background: 'rgba(0,200,150,0.05)', padding: '8px 12px', borderRadius: 8 }}>
-              New room instantly appears in Event Logs, Automation, Multi-Room, and room selector.
-            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -420,7 +417,6 @@ function RoomsPage({ rooms, setRooms, setSelectedRoom, setActiveNav, addToast, d
                 {isAdmin && (
                   <button onClick={e => { e.stopPropagation(); setEditTarget(room); setEditDesc(room.description || '') }}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: '3px 5px', borderRadius: 5, transition: 'color 0.15s' }}
-                    title="Edit room"
                     onMouseEnter={e => e.currentTarget.style.color = 'var(--green)'}
                     onMouseLeave={e => e.currentTarget.style.color = 'var(--text-3)'}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -461,7 +457,6 @@ function RoomsPage({ rooms, setRooms, setSelectedRoom, setActiveNav, addToast, d
                 <div style={{ marginBottom: 16 }}>
                   <label style={{ fontSize: '0.78rem', color: 'var(--text-3)', fontWeight: 500, display: 'block', marginBottom: 6 }}>Room Label</label>
                   <input value={editTarget.name} disabled style={{ width: '100%', padding: '9px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontFamily: 'Geist, sans-serif', fontSize: '0.85rem', color: 'var(--text-3)', background: 'var(--bg)', outline: 'none', boxSizing: 'border-box', opacity: 0.6 }} />
-                  <div style={{ fontSize: '0.71rem', color: 'var(--text-3)', marginTop: 4 }}>Room label cannot be changed after creation.</div>
                 </div>
                 <div style={{ marginBottom: 20 }}>
                   <label style={{ fontSize: '0.78rem', color: 'var(--text-3)', fontWeight: 500, display: 'block', marginBottom: 6 }}>Description</label>
@@ -686,14 +681,7 @@ function AutomationPage({ rooms, addToast, demoMode, userRole }) {
 
   const openEdit = (rule) => {
     setEditRule(rule)
-    setEditForm({
-      name: rule.name,
-      trigger: rule.trigger,
-      action: rule.action,
-      delay: rule.delay_minutes || rule.delay || 5,
-      room: rule.room_name || rule.room,
-      enabled: rule.enabled,
-    })
+    setEditForm({ name: rule.name, trigger: rule.trigger, action: rule.action, delay: rule.delay_minutes || rule.delay || 5, room: rule.room_name || rule.room, enabled: rule.enabled })
   }
 
   const saveEdit = async () => {
@@ -797,8 +785,7 @@ function AutomationPage({ rooms, addToast, demoMode, userRole }) {
               {canManage && (
                 <>
                   <button onClick={() => openEdit(rule)}
-                    style={{ background: 'none', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-3)', padding: '5px 8px', borderRadius: 6, fontSize: '0.75rem', fontFamily: 'Geist, sans-serif', display: 'flex', alignItems: 'center', gap: 4 }}
-                    title="Edit rule">
+                    style={{ background: 'none', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-3)', padding: '5px 8px', borderRadius: 6, fontSize: '0.75rem', fontFamily: 'Geist, sans-serif', display: 'flex', alignItems: 'center', gap: 4 }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     Edit
                   </button>
@@ -1078,69 +1065,95 @@ function DevicePlaceholder({ currentRoom }) {
 
   const ESP32_CODE = `#include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 
-const char* ssid     = "ohyoudonthaveloadhowpoor";
-const char* password = "gelatninjer";
-const char* serverURL = "http://YOUR_SERVER_IP:8000/api/motion/";
+const char* ssid      = "oh u dont have load? oh how poor";
+const char* password  = "gelatnigga";
+const char* serverURL = "https://sec-backend-i03g.onrender.com/api/motion/";
 
-const int PIR_PIN   = 13;
-const int RELAY_PIN = 2;
+const int PIR_PIN   = 14;
+const int RELAY_PIN = 26;
 const char* ROOM    = "A";
+
+unsigned long motionEndTime   = 0;
+bool waitingToTurnOff         = false;
+const unsigned long LIGHTS_OFF_DELAY = 7000;
+int lastState = LOW;
+
+void wakeServer() {
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.begin(client, serverURL);
+  http.setTimeout(30000);
+  int code = http.GET();
+  Serial.printf("[HTTP] Wake: %d\\n", code);
+  http.end();
+}
+
+void sendEvent(const char* event) {
+  if (WiFi.status() != WL_CONNECTED) return;
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.begin(client, serverURL);
+  http.addHeader("Content-Type", "application/json");
+  http.setTimeout(8000);
+  String body = "{\\"room\\":\\"" + String(ROOM) + "\\",\\"event\\":\\"" + String(event) + "\\",\\"source\\":\\"esp32\\"}";
+  Serial.println("[HTTP] POST -> " + body);
+  unsigned long t = millis();
+  int code = http.POST(body);
+  Serial.printf("[HTTP] %d in %lums\\n", code, millis() - t);
+  http.end();
+}
 
 void setup() {
   Serial.begin(115200);
   pinMode(PIR_PIN, INPUT);
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(RELAY_PIN, HIGH);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  Serial.print("Connecting to hotspot");
-  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
-  Serial.println("\\nWiFi connected!");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  Serial.print("[WiFi] Connecting");
+  while (WiFi.status() != WL_CONNECTED) { delay(300); Serial.print("."); }
+  Serial.println("\\n[WiFi] Connected: " + WiFi.localIP().toString());
+  wakeServer();
+  Serial.println("[READY] Monitoring PIR...");
 }
-
-void sendEvent(const char* event) {
-  if (WiFi.status() != WL_CONNECTED) { Serial.println("WiFi disconnected"); return; }
-  HTTPClient http;
-  http.begin(serverURL);
-  http.addHeader("Content-Type", "application/json");
-  String body = "{\\"room\\":\\"" + String(ROOM) + "\\",\\"event\\":\\"" + String(event) + "\\",\\"source\\":\\"esp32\\"}";
-  int code = http.POST(body);
-  Serial.print("HTTP response: "); Serial.println(code);
-  http.end();
-}
-
-int lastState = LOW;
 
 void loop() {
   int state = digitalRead(PIR_PIN);
+  Serial.printf("[PIR] %d\\n", state);
   if (state == HIGH && lastState == LOW) {
-    digitalWrite(RELAY_PIN, HIGH);
-    Serial.println("Motion detected — Lights ON");
+    waitingToTurnOff = false;
+    digitalWrite(RELAY_PIN, LOW);
+    Serial.println("[PIR] Motion -> Lights ON");
     sendEvent("Lights ON");
   }
   if (state == LOW && lastState == HIGH) {
-    delay(7000);
+    waitingToTurnOff = true;
+    motionEndTime = millis();
+  }
+  if (waitingToTurnOff && (millis() - motionEndTime >= LIGHTS_OFF_DELAY)) {
+    waitingToTurnOff = false;
     if (digitalRead(PIR_PIN) == LOW) {
-      digitalWrite(RELAY_PIN, LOW);
-      Serial.println("No motion — Lights OFF");
+      digitalWrite(RELAY_PIN, HIGH);
+      Serial.println("[PIR] Lights OFF");
       sendEvent("Lights OFF");
     }
   }
   lastState = state;
-  delay(500);
+  delay(100);
 }`
 
   const tutorialSteps = [
     { num: 1, color: '#00c896', title: 'Gather Your Components', desc: 'You need: ESP32 board, PIR motion sensor (HC-SR501), 5V Relay module, 2.5V bulb with socket, 9V battery with connector, breadboard, and jumper wires.', detail: 'Make sure your relay module is rated for at least 5V coil voltage. The 9V battery connects to the relay output side to power the 2.5V bulb through a resistor.' },
-    { num: 2, color: '#6366f1', title: 'Wire the PIR Sensor to ESP32', desc: 'PIR VCC → 3.3V pin on ESP32. PIR GND → GND on ESP32. PIR OUT → GPIO 13 on ESP32.', detail: 'The PIR sensor outputs HIGH (3.3V) when motion is detected and LOW when idle. GPIO 13 reads this signal. No resistor needed for the PIR data line.' },
-    { num: 3, color: '#f59e0b', title: 'Wire the Relay Module to ESP32', desc: 'Relay VCC → 5V pin (VIN) on ESP32. Relay GND → GND on ESP32. Relay IN → GPIO 2 on ESP32.', detail: 'GPIO 2 controls the relay coil. When ESP32 sends HIGH to GPIO 2, the relay closes its switch. Use the NO (Normally Open) terminal on the relay for the bulb circuit.' },
+    { num: 2, color: '#6366f1', title: 'Wire the PIR Sensor to ESP32', desc: 'PIR VCC → 3.3V pin on ESP32. PIR GND → GND on ESP32. PIR OUT → GPIO 14 on ESP32.', detail: 'The PIR sensor outputs HIGH (3.3V) when motion is detected and LOW when idle. GPIO 14 reads this signal. No resistor needed for the PIR data line.' },
+    { num: 3, color: '#f59e0b', title: 'Wire the Relay Module to ESP32', desc: 'Relay VCC → 5V pin (VIN) on ESP32. Relay GND → GND on ESP32. Relay IN → GPIO 26 on ESP32.', detail: 'GPIO 26 controls the relay coil. When ESP32 sends LOW to GPIO 26, the relay closes its switch. Use the NO (Normally Open) terminal on the relay for the bulb circuit.' },
     { num: 4, color: '#ef4444', title: 'Wire the 9V Battery + Resistor + Bulb', desc: 'Battery (+) → Relay COM terminal. Relay NO terminal → Resistor (680Ω) → Bulb (+). Bulb (−) → Battery (−).', detail: 'The 9V battery powers the bulb through the relay. Since your bulb is 2.5V 3W, use a 680Ω resistor (9V − 2.5V = 6.5V drop). This protects your bulb from burning out.' },
-    { num: 5, color: '#8b5cf6', title: 'Connect ESP32 to Phone Hotspot', desc: 'Enable hotspot on your phone: name it "ohyoudonthaveloadhowpoor", password "gelatninjer". The ESP32 code already has these credentials.', detail: 'Make sure your Django backend server is also on the same network or has a public IP. Replace YOUR_SERVER_IP in the code with your laptop\'s IP address.' },
-    { num: 6, color: '#10b981', title: 'Flash the Code via Arduino IDE', desc: 'Install Arduino IDE → Add ESP32 board URL in preferences → Install "ESP32 by Espressif" from board manager → Select your board → Upload.', detail: 'Board manager URL: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json — Select board: "ESP32 Dev Module". Open Serial Monitor at 115200 baud.' },
-    { num: 7, color: '#f59e0b', title: 'Test the Full System', desc: 'Power on ESP32 → watch Serial Monitor for WiFi connection → wave your hand in front of PIR → bulb should turn ON and dashboard should update.', detail: 'If nothing happens: check your server IP in the code, make sure Django is running (python manage.py runserver 0.0.0.0:8000), and verify the PIR is warmed up (takes 30-60 seconds after power-on).' }
+    { num: 5, color: '#8b5cf6', title: 'Connect ESP32 to Phone Hotspot', desc: 'Enable hotspot on your phone. The ESP32 code already has your hotspot credentials built in.', detail: 'Make sure your Django backend server is reachable. The code connects to the Render backend directly over HTTPS.' },
+    { num: 6, color: '#10b981', title: 'Flash the Code via Arduino IDE', desc: 'Install Arduino IDE → Add ESP32 board URL in preferences → Install "ESP32 by Espressif" → Select your board → Upload.', detail: 'Board manager URL: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json — Select board: "ESP32 Dev Module". Open Serial Monitor at 115200 baud.' },
+    { num: 7, color: '#f59e0b', title: 'Test the Full System', desc: 'Power on ESP32 → watch Serial Monitor for WiFi connection → wave your hand in front of PIR → bulb should turn ON and dashboard should auto-navigate.', detail: 'Dashboard polls every 2 seconds. When motion is detected the dashboard will automatically switch to the Dashboard tab and select the active room.' }
   ]
 
   return (
@@ -1169,7 +1182,7 @@ void loop() {
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24 }}>
             <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-1)', marginBottom: 14 }}>Pin Configuration</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {[['PIR VCC','3.3V'],['PIR GND','GND'],['PIR OUT','GPIO 13'],['Relay IN','GPIO 2'],['Relay VCC','5V (VIN)'],['Relay GND','GND'],['Bulb (+)','Relay NO'],['Battery (+)','Relay COM'],['Resistor','680Ω series']].map(([l,v],i) => (
+              {[['PIR VCC','3.3V'],['PIR GND','GND'],['PIR OUT','GPIO 14'],['Relay IN','GPIO 26'],['Relay VCC','5V (VIN)'],['Relay GND','GND'],['Bulb (+)','Relay NO'],['Battery (+)','Relay COM'],['Resistor','680Ω series']].map(([l,v],i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 12px', background: 'var(--bg)', borderRadius: 8 }}>
                   <span style={{ fontSize: '0.79rem', color: 'var(--text-3)', fontWeight: 500 }}>{l}</span>
                   <span style={{ fontSize: '0.79rem', color: 'var(--text-1)', fontWeight: 600, fontFamily: 'monospace' }}>{v}</span>
@@ -1180,30 +1193,14 @@ void loop() {
 
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24 }}>
             <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-1)', marginBottom: 6 }}>ESP32 Arduino Code</div>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-3)', marginBottom: 12, lineHeight: 1.6 }}>Flash this to your ESP32. WiFi pre-configured for hotspot. Replace <code style={{ background: 'var(--bg)', padding: '2px 6px', borderRadius: 4 }}>YOUR_SERVER_IP</code> with your laptop's local IP before uploading.</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 14px', background: 'rgba(0,200,150,0.06)', border: '1px solid rgba(0,200,150,0.2)', borderRadius: 8 }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)', animation: 'livePulse 1.8s infinite' }} />
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-2)' }}>Hotspot: <strong style={{ color: 'var(--text-1)' }}>ohyoudonthaveloadhowpoor</strong> · Password: <strong style={{ color: 'var(--text-1)' }}>gelatninjer</strong></span>
-            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-3)', marginBottom: 12, lineHeight: 1.6 }}>Latest version with HTTPS, non-blocking motion timer, and 2s dashboard polling support.</p>
             <div style={{ background: 'var(--dark)', borderRadius: 10, padding: '18px 20px', overflow: 'auto', maxHeight: 380 }}>
               <pre style={{ color: '#00ff88', fontFamily: 'monospace', fontSize: '0.75rem', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{ESP32_CODE}</pre>
             </div>
           </div>
 
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24 }}>
-            <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-1)', marginBottom: 6 }}>Component List</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
-              {[{ icon: '🔲', name: 'ESP32', desc: 'Main microcontroller', color: '#1a5c22' }, { icon: '👁️', name: 'PIR Sensor', desc: 'HC-SR501 motion detector', color: '#cc4444' }, { icon: '⚡', name: 'Relay Module', desc: '5V coil, switches bulb', color: '#0a3a7a' }, { icon: '💡', name: '2.5V Bulb', desc: '3W, tiny socket bulb', color: '#c87820' }, { icon: '🔋', name: '9V Battery', desc: 'Powers bulb circuit', color: '#cc2200' }, { icon: '🟫', name: 'Breadboard', desc: 'Prototyping connections', color: '#888' }, { icon: '〰️', name: '680Ω Resistor', desc: 'Protects 2.5V bulb', color: '#c8a864' }, { icon: '🔌', name: 'Jumper Wires', desc: 'Male-to-male + M-to-F', color: '#4488ff' }].map((comp, i) => (
-                <div key={i} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 8 }}>
-                  <div style={{ width: 46, height: 46, borderRadius: 12, background: `${comp.color}18`, border: `1.5px solid ${comp.color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem' }}>{comp.icon}</div>
-                  <div style={{ fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-1)' }}>{comp.name}</div>
-                  <div style={{ fontSize: '0.71rem', color: 'var(--text-3)', lineHeight: 1.5 }}>{comp.desc}</div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-1)', marginBottom: 6 }}>Step-by-Step Wiring Tutorial</div>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-3)', marginBottom: 20, lineHeight: 1.6 }}>Follow each step carefully. Click any step to expand details. Your bulb is 2.5V 3W — the resistor is critical to prevent burning it out.</p>
+            <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-1)', marginBottom: 20 }}>Step-by-Step Wiring Tutorial</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
               {tutorialSteps.map((step) => (
                 <div key={step.num} onClick={() => setActiveStep(activeStep === step.num ? null : step.num)}
@@ -1226,10 +1223,6 @@ void loop() {
                 </div>
               ))}
             </div>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '14px 16px', fontSize: '0.82rem', color: '#92400e', lineHeight: 1.6 }}>
-              <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>⚠️</span>
-              <span><strong>Safety Note:</strong> Your 2.5V 3W bulb uses about 1.2A at full voltage. With 9V battery and 680Ω resistor, current ≈ 9.6mA — well within safe range. Never connect the bulb directly to 9V without the resistor or it will instantly burn out. The relay isolates the high-current bulb circuit from the ESP32 low-voltage logic circuit.</span>
-            </div>
           </div>
 
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24 }}>
@@ -1244,24 +1237,7 @@ void loop() {
                 {modelMotion ? 'Motion Active — Bulb ON' : 'Simulate Motion'}
               </button>
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-              {[{ color: '#ff4444', label: 'VCC / Power' }, { color: '#222222', label: 'GND' }, { color: '#00c896', label: 'PIR Signal (GPIO 13)' }, { color: '#4488ff', label: 'Relay Control (GPIO 2)' }, { color: '#ff6600', label: 'Bulb Circuit (9V)' }, { color: '#ff8844', label: 'Relay Output' }].map((item, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg)', borderRadius: 6, padding: '4px 10px', border: '1px solid var(--border)' }}>
-                  <span style={{ width: 10, height: 3, borderRadius: 2, background: item.color, display: 'inline-block' }} />
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-2)', fontFamily: 'monospace' }}>{item.label}</span>
-                </div>
-              ))}
-            </div>
             <ESP32WiringModel showMotion={modelMotion} />
-            <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-              {[{ title: 'PIR → ESP32', desc: 'GPIO 13 reads HIGH when motion detected', icon: '👁️' }, { title: 'ESP32 → Relay', desc: 'GPIO 2 sends signal to switch relay coil', icon: '⚡' }, { title: 'Relay → Bulb', desc: '9V battery powers 2.5V bulb via relay + resistor', icon: '💡' }].map((info, i) => (
-                <div key={i} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px' }}>
-                  <div style={{ fontSize: '1rem', marginBottom: 6 }}>{info.icon}</div>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-1)', marginBottom: 4 }}>{info.title}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-3)', lineHeight: 1.5 }}>{info.desc}</div>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </div>
@@ -1283,7 +1259,6 @@ function SettingsPlaceholder({ userRole }) {
             <div key={i} style={{ fontSize: '0.84rem', color: 'var(--text-2)', marginBottom: 6 }}><strong style={{ color: 'var(--text-1)' }}>{l}:</strong> {v}</div>
           ))}
         </div>
-
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 22 }}>
           <div style={{ fontWeight: 600, fontSize: '0.92rem', color: 'var(--text-1)', marginBottom: 14 }}>Technical Stack</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1295,7 +1270,6 @@ function SettingsPlaceholder({ userRole }) {
             ))}
           </div>
         </div>
-
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 22 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, background: 'rgba(0,200,150,0.06)', borderRadius: 10, border: '1px solid rgba(0,200,150,0.2)' }}>
             <div style={{ width: 42, height: 42, borderRadius: 10, background: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: '0.79rem' }}>ZC</div>
@@ -1325,7 +1299,6 @@ function AboutPlaceholder() {
             <div style={{ fontSize: '0.84rem', color: 'var(--text-2)', lineHeight: 1.75 }}>IoT-based smart lighting automation system designed for classroom environments. Uses an ESP32 microcontroller with a PIR motion sensor and relay module to automatically control lighting based on room occupancy, reducing energy waste and operational costs at Western Mindanao State University.</div>
           </div>
         </div>
-
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
           {[['Project Type','IoT Automation System'],['Subject','Internet of Things (IoT)'],['Course','BSIT 3A'],['Program','BS Information Technology'],['College','College of Computing Studies'],['University','Western Mindanao State University']].map(([l,v],i) => (
             <div key={i} style={{ padding: '9px 12px', background: 'var(--bg)', borderRadius: 8 }}>
@@ -1334,29 +1307,6 @@ function AboutPlaceholder() {
             </div>
           ))}
         </div>
-
-        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-1)', marginBottom: 10 }}>System Purpose</div>
-        <p style={{ fontSize: '0.83rem', color: 'var(--text-2)', lineHeight: 1.75, marginBottom: 18 }}>The system addresses energy inefficiency in classroom lighting by implementing motion-based automation. When the PIR sensor detects movement, lights turn on automatically. After a configurable timeout period with no motion, lights turn off automatically. This eliminates manual switching and prevents lights from remaining on in vacant rooms, directly reducing electricity consumption billed at the ZAMCELCO rate of ₱{ZAMCELCO_RATE}/kWh.</p>
-
-        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-1)', marginBottom: 10 }}>Key Features</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 20 }}>
-          {['Real-time motion detection via ESP32 and HC-SR501 PIR sensor', 'Automatic relay-controlled light switching with 7-second timeout', 'Web dashboard with live status monitoring and 5-second polling', 'Energy savings tracking using ZAMCELCO ₱13.25/kWh rate', 'Historical data viewing by date with calendar selector', 'Multi-room support: Rooms A, B, C with independent monitoring', '3D interactive wiring visualization with React Three Fiber', 'AI-powered energy insights and optimization recommendations', 'Automation rules engine with IF/THEN trigger configuration', 'Scenario simulation for testing without hardware', 'Timeline playback to replay historical events', 'CSV and PDF report export with WMSU branding', 'Role-based access control: Admin, Professor, Viewer', 'Notification system with bell indicator'].map((feat, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.82rem', color: 'var(--text-2)' }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green)', flexShrink: 0 }} />{feat}
-            </div>
-          ))}
-        </div>
-
-        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-1)', marginBottom: 12 }}>Hardware Components</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10, marginBottom: 22 }}>
-          {[{ name: 'ESP32 Dev Module', desc: 'Main WiFi-enabled microcontroller', icon: '🔲' }, { name: 'HC-SR501 PIR', desc: 'Passive infrared motion sensor', icon: '👁️' }, { name: '5V Relay Module', desc: 'Electromechanical switch for bulb', icon: '⚡' }, { name: '2.5V Bulb (3W)', desc: 'Low-voltage indicator lamp', icon: '💡' }, { name: '9V Battery', desc: 'Power source for bulb circuit', icon: '🔋' }, { name: '680Ω Resistor', desc: 'Current limiting for bulb protection', icon: '〰️' }, { name: 'Breadboard', desc: 'Prototyping board for connections', icon: '🟫' }, { name: 'Jumper Wires', desc: 'Male-to-male and male-to-female', icon: '🔌' }].map((h, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px', background: 'var(--bg)', borderRadius: 8 }}>
-              <span style={{ fontSize: '1.2rem' }}>{h.icon}</span>
-              <div><div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-1)' }}>{h.name}</div><div style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>{h.desc}</div></div>
-            </div>
-          ))}
-        </div>
-
         <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-1)', marginBottom: 12 }}>Developers</div>
         {[{ name: 'Angel Garcia', role: 'Lead Developer & Hardware Integration', color: '#00c896' }, { name: 'Kurt Adlrich Canilang', role: 'Backend Developer & System Architecture', color: '#6366f1' }, { name: 'John Paul Enriquez', role: 'Frontend Developer & UI/UX Design', color: '#f59e0b' }].map((dev, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--bg)', borderRadius: 9, marginBottom: 8, border: '1px solid var(--border)' }}>
@@ -1504,12 +1454,12 @@ function InsightsPlaceholder({ rooms, selectedRoom, savedInsights, onSaveInsight
 }
 
 function SimulationPlaceholder({ rooms, selectedRoom, loadRooms, addToast }) {
-  const [simulating, setSimulating]         = useState(false)
-  const [simOff, setSimOff]                 = useState(false)
+  const [simulating, setSimulating]           = useState(false)
+  const [simOff, setSimOff]                   = useState(false)
   const [scenarioRunning, setScenarioRunning] = useState(false)
-  const [scenarioLog, setScenarioLog]       = useState([])
+  const [scenarioLog, setScenarioLog]         = useState([])
   const [scenarioProgress, setScenarioProgress] = useState(0)
-  const [activeScenario, setActiveScenario] = useState(null)
+  const [activeScenario, setActiveScenario]   = useState(null)
   const room = rooms.find(r => r.name === selectedRoom)
 
   const handleOn  = async () => { setSimulating(true); try { await simulateMotion(selectedRoom); await loadRooms(); addToast('Lights ON!', 'success') } catch { addToast('Failed', 'warning') } finally { setSimulating(false) } }
@@ -1613,11 +1563,11 @@ export default function DashboardScreen({ onLogout, currentUser }) {
   const [savedInsights, setSavedInsights] = useState(() => { try { return JSON.parse(localStorage.getItem('sec_saved_insights') || '[]') } catch { return [] } })
   const [notifications, setNotifications] = useState(() => { try { return JSON.parse(localStorage.getItem('sec_notifs') || '[]') } catch { return [] } })
 
-  const prevEventCount = useRef(0)
-  const intervalRef    = useRef(null)
-  const pollRef        = useRef(null)
-  const toastId        = useRef(0)
-  const notifId        = useRef(notifications.length)
+  const prevEventCounts = useRef({})
+  const intervalRef     = useRef(null)
+  const pollRef         = useRef(null)
+  const toastId         = useRef(0)
+  const notifId         = useRef(notifications.length)
 
   const addToast = (msg, type = 'success') => {
     const id = ++toastId.current
@@ -1685,18 +1635,36 @@ export default function DashboardScreen({ onLogout, currentUser }) {
     try {
       const data = await fetchRooms()
       setRooms(prev => {
-        const newRoom  = data.find(r => r.name === selectedRoom)
-        const prevRoom = prev.find(r => r.name === selectedRoom)
-        if (prevRoom && newRoom && newRoom.events?.length > prevEventCount.current) {
-          const newIds = new Set(newRoom.events.slice(0, newRoom.events.length - prevEventCount.current).map(e => e.id))
-          setNewEventIds(newIds)
-          setTimeout(() => setNewEventIds(new Set()), 2000)
-          if (silent) {
-            addToast(`Motion detected in Room ${selectedRoom}!`, 'success')
-            pushNotification(`Motion — Room ${selectedRoom}`, `Lights turned ON at ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`, 'motion', selectedRoom)
+        data.forEach(newRoom => {
+          const prevCount = prevEventCounts.current[newRoom.name] || 0
+          const newCount  = newRoom.events?.length || 0
+
+          if (silent && newCount > prevCount) {
+            const newIds = new Set(
+              newRoom.events
+                .slice(0, newCount - prevCount)
+                .map(e => e.id)
+            )
+            setNewEventIds(newIds)
+            setTimeout(() => setNewEventIds(new Set()), 2000)
+
+            setActiveNav('dashboard')
+            setSelectedRoom(newRoom.name)
+            setViewingDate(null)
+            setHistoricalData(null)
+
+            addToast(`Motion detected in Room ${newRoom.name}!`, 'success')
+            pushNotification(
+              `Motion — Room ${newRoom.name}`,
+              `Lights turned ON at ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
+              'motion',
+              newRoom.name
+            )
           }
-        }
-        if (newRoom) prevEventCount.current = newRoom.events?.length || 0
+
+          prevEventCounts.current[newRoom.name] = newCount
+        })
+
         return data
       })
       if (data.length > 0 && !selectedRoom) setSelectedRoom(data[0].name)
@@ -1726,6 +1694,7 @@ export default function DashboardScreen({ onLogout, currentUser }) {
     } catch { addToast('Simulation failed', 'warning') }
     finally { setSimulating(false) }
   }
+
   const handleSimulateOff = async () => {
     setSimulatingOff(true)
     try { await simulateLightsOff(selectedRoom); await loadRooms(); addToast('Lights OFF — simulated!', 'info') }
@@ -1761,7 +1730,7 @@ export default function DashboardScreen({ onLogout, currentUser }) {
   const chartOptions = { responsive: true, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#0e1a14', borderColor: 'rgba(0,200,150,0.2)', borderWidth: 1, titleColor: '#fff', bodyColor: '#8fa898' } }, scales: { x: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { color: '#8fa898', font: { size: 11 } } }, y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { color: '#8fa898', font: { size: 11 } } } } }
 
   const navGroups = [
-    { label: 'Monitor',  items: [{ key: 'dashboard', label: 'Dashboard',     icon: '⊞' }, { key: 'rooms', label: 'Rooms', icon: '⌂' }, { key: 'logs', label: 'Event Logs', icon: '≡' }] },
+    { label: 'Monitor',  items: [{ key: 'dashboard', label: 'Dashboard', icon: '⊞' }, { key: 'rooms', label: 'Rooms', icon: '⌂' }, { key: 'logs', label: 'Event Logs', icon: '≡' }] },
     { label: 'Analyze',  items: [{ key: 'report', label: 'Reports', icon: '▦' }, { key: 'multiroom', label: 'Multi-Room', icon: '⊟' }, { key: 'insights', label: 'Smart Insights', icon: '★' }, { key: 'timeline', label: 'Timeline', icon: '◄' }] },
     { label: 'Control',  items: [{ key: 'automation', label: 'Automation', icon: '◎' }, { key: 'simulation', label: 'Simulation', icon: '▶' }] },
     { label: 'System',   items: [{ key: 'device', label: 'ESP32 Device', icon: '◎' }, { key: 'classroom3d', label: '3D Classroom', icon: '◈' }, { key: 'settings', label: 'Settings', icon: '⚙' }, { key: 'about', label: 'About', icon: 'ℹ' }] },
@@ -1958,7 +1927,7 @@ export default function DashboardScreen({ onLogout, currentUser }) {
                   <div style={{ width: 10, height: 10, borderRadius: '50%', background: modalData.room?.is_active ? 'var(--green)' : 'var(--red)', animation: modalData.room?.is_active ? 'livePulse 1.8s infinite' : 'none' }} />
                   <span style={{ fontWeight: 600, color: 'var(--text-1)' }}>Lights are <strong style={{ color: modalData.room?.is_active ? 'var(--green)' : 'var(--red)' }}>{modalData.room?.is_active ? 'ON' : 'OFF'}</strong></span>
                 </div>
-                <p style={{ fontSize: '0.84rem', color: 'var(--text-2)', lineHeight: 1.7 }}>The relay module on GPIO 2 controls the 2.5V bulb. PIR sensor on GPIO 13 triggers motion events. Auto-off activates after 7 seconds of no motion.</p>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-2)', lineHeight: 1.7 }}>The relay module on GPIO 26 controls the 2.5V bulb. PIR sensor on GPIO 14 triggers motion events. Auto-off activates after 7 seconds of no motion.</p>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={handleSimulate} disabled={simulating} style={{ flex: 1, padding: '10px', background: 'var(--green)', color: 'white', border: 'none', borderRadius: 8, fontFamily: 'Geist, sans-serif', fontSize: '0.84rem', fontWeight: 500, cursor: 'pointer' }}>{simulating ? '…' : 'Turn ON'}</button>
                   <button onClick={handleSimulateOff} disabled={simulatingOff} style={{ flex: 1, padding: '10px', background: 'var(--red)', color: 'white', border: 'none', borderRadius: 8, fontFamily: 'Geist, sans-serif', fontSize: '0.84rem', fontWeight: 500, cursor: 'pointer' }}>{simulatingOff ? '…' : 'Turn OFF'}</button>
@@ -1967,7 +1936,7 @@ export default function DashboardScreen({ onLogout, currentUser }) {
             )}
             {modalOpen === 'motion' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <p style={{ fontSize: '0.84rem', color: 'var(--text-2)', lineHeight: 1.7 }}>HC-SR501 PIR sensor outputs HIGH (3.3V) to GPIO 13 when motion is sensed, triggering the relay and logging the event.</p>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-2)', lineHeight: 1.7 }}>HC-SR501 PIR sensor outputs HIGH (3.3V) to GPIO 14 when motion is sensed, triggering the relay and logging the event.</p>
                 <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {(modalData.room?.events || []).filter(e => e.status === 'on').slice(0, 12).map((ev, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 12px', background: 'var(--bg)', borderRadius: 8, fontSize: '0.81rem' }}>
